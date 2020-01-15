@@ -135,6 +135,26 @@ class YOLOLayer(nn.Module):
         self.anchor_h = self.scaled_anchors[:, 1:2].view((1, self.num_anchors, 1, 1))
 
     def forward(self, x, targets=None, img_dim=None):
+        # Tensor for cuda support
+        FloatTensor = torch.cuda.FloatTensor if x.is_cuda else torch.FloatTensor
+        LongTensor = torch.cuda.LongTensor if x.is_cuda else torch.LongTensor
+        ByteTensor = torch.cuda.ByteTensor if x.is_cuda else torch.ByteTensor
+
+        self.img_dim = img_dim
+        num_samples = x.size(0)
+        grid_size = x.size(2)
+
+        prediction = (
+            x.view(num_samples, self.num_anchors, self.num_classes+5, grid_size, grid_size)
+                .permute(0,1,3,4,2).contiguous())
+
+        # Get outputs
+        x = torch.sigmoid()
+        y = torch.sigmoid(prediction[..., 1])  # Center y
+        w = prediction[..., 2]  # Width
+        h = prediction[..., 3]  # Height
+        pred_conf = torch.sigmoid(prediction[..., 4])  # Conf
+        pred_cls = torch.sigmoid(prediction[..., 5:])  # Cls pred.
 
 
 
