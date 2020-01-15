@@ -54,6 +54,94 @@ def create_modules(module_defs):
             maxpool = nn.MaxPool2d(kernel_size = kernel_size, stride = stride, padding = int((kernel_size-1) // 2))
             modules.add_module(f"maxpool{module_i}", maxpool)
 
+        elif module_def["type"] == "upsample":
+            upsample = Upsample(scale_factor=int(module_def["stride"]), mode="nearest")
+            modules.add_module(f"upsample_{module_i}", upsample)
+
+        elif module_def["type"] == "route":
+            layers = [int(x) for x in module_def["layers"].split(",")]
+            filters = sum([output_filters[1:][i] for i in layers])
+            modules.add_module(f"route_{module_i}", EmptyLayer())
+
+        elif module_def["type"] == "shortcut":
+            filters = output_filters[1:][int(module_def["from"])]
+            modules.add_module(f"shortcut_{module_i}", EmptyLayer())
+
+        elif module_def["type"] == "yolo":
+            anchor_idxs = [int(x) for x in module_def['mask'].split(",")]
+            # Extract anchors
+            anchors = [int(x) for x in module_def["anchors"].split(",")]
+            anchors = [(anchors[i], anchors[i+1]) for i in range(0, len(anchors), 2)]
+            anchors = [anchors[i] for i in anchor_idxs]
+            num_classes = int(module_def["classes"])
+            img_size = int(hyperparams["height"])
+            # define detection layer
+            yolo_layer = YOLOLayer(anchors, num_classes, img_size)
+            modules.add_module(f"yolo_{module_i}", yolo_layer)
+        # Register module list and number of output filters
+        module_list.append(modules)
+        output_filters.append(filters)
+
+    return hyperparams, module_list
+
+
+class Upsample(nn.Module):
+    """ nn.Upsample is deprecated"""
+
+    def __init__(self, scale_factor, mode="nearest"):
+        super(Upsample, self).__init__()
+        self.scale_factor = scale_factor
+        self.mode = mode
+
+    def forward(self, x):
+        x = F.interpolate(x, scale_factor = self.scale_factor, mode = self.mode)
+        return x
+
+
+class EmptyLayer(nn.Module):
+    """Placeholder for 'route' and 'shortcut' layers"""
+
+    def __init__(self):
+        super(EmptyLayer, self).__init__()
+
+
+class YOLOLayer(nn.Module):
+    """Detection layer"""
+
+    def __init__(self, anchors, num_classes, img_dim=416):
+        super(YOLOLayer, self).__init__()
+        self.anchors = anchors
+        self.num_anchors = len(anchors)
+        self.num_classes = num_classes
+        self.ignore_thres = 0.5
+        self.mse_loss = nn.MSELoss()
+        self.bce_loss = nn.BCELoss()
+        self.obj_scale = 1
+        self.noobs_scale = 100
+        self.metrics = {}
+        self.img_dim = img_dim
+        self.grid_size = 0
+
+    def compute_grid_offset(self, grid_size, cuda=True):
+        self.grid_size = grid_size
+        g = self.grid_size
+        FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
+        self.stride = self.img_dim / self.grid_size
+        # Calculate offsets for each grid
+        self.grid_x = torch.arange(g).repeat(g,1).view([1,1,g,g]).type(FloatTensor)
+        self.grid_y = torch.arange(g).repeat(g, 1).t().view([1, 1, g, g]).type(FloatTensor)
+        self.scaled_anchors = FloatTensor([(a_w / self.stride, a_h / self.stride) for a_w, a_h in self.anchors])
+        self.anchor_w = self.scaled_anchors[:, 0:1].view((1, self.num_anchors, 1, 1))
+        self.anchor_h = self.scaled_anchors[:, 1:2].view((1, self.num_anchors, 1, 1))
+
+    def forward(self, x, targets=None, img_dim=None):
+
+
+
+
+
+
+
 
 
 
