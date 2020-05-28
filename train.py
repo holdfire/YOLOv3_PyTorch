@@ -47,4 +47,50 @@ if __name__ == "__main__":
     os.makedirs("checkpoints", exist_ok=True)
 
     # Get data configuration
+    data_config = parse_data_config(opt.data_config)
+    train_path = data_config["train"]
+    valid_path = data_config["valid"]
+    class_name = load_classes(data_config["names"])
+
+    # Initiate model
+    model = Darknet(opt.model_def).to(device)
+    model.apply(weight_init_normal)
+
+    # if specified, we start from checkpoint
+    if opt.pretrained_weights:
+        if opt.pretrained_weights.endswith(".pth"):
+            model.load_static_dict(torch.load(opt.pretrained_weights))
+        else:
+            model.load_darknet_weights(opt.pretrained_weights)
+
+    # get dataloader
+    dataset = ListDataset(train_path, augment=True, multiscale=opt.multiscale_training)
+    dataloader = torch.utils.data.Dataloader(
+        dataset,
+        batch_size=opt.batch_size,
+        shuffle=True,
+        num_workers=opt.n_cpu,
+        pin_memory=True,
+        collate_fn=dataset.c0llate_fn,
+    )
+
+    optimizer = torch.optim.Adam(model.parameters())
+
+    metrics = [
+        "grid_size",
+        "loss",
+        "x",
+        "y",
+        "w",
+        "h",
+        "conf",
+        "cls",
+        "cls_acc",
+        "recall50",
+        "recall75",
+        "precision",
+        "conf_obj",
+        "conf_noobj",
+    ]
+
 
